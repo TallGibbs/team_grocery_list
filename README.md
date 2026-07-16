@@ -111,17 +111,38 @@ Add it by hand:
 ### 7. Attach the custom domain `grocery.youmissedit.org`
 
 Custom domains for Pages are attached in the dashboard (Wrangler has no stable
-command for this). Because `youmissedit.org` is already on this Cloudflare
-account, Cloudflare creates the DNS record for you automatically.
+command for this). There are two cases depending on where the domain's DNS is
+managed.
 
-1. Cloudflare dashboard → **Workers & Pages** → **team-grocery-list**.
-2. **Custom domains** tab → **Set up a custom domain**.
-3. Enter `grocery.youmissedit.org` and continue.
-4. Cloudflare adds the required `CNAME` (pointing at
-   `team-grocery-list.pages.dev`) into the `youmissedit.org` zone and begins
-   issuing a certificate. Confirm/activate when prompted.
-5. Wait for status to become **Active** (usually a minute or two), then visit
+**Case A — DNS managed at an external provider (e.g. GoDaddy).**
+This is how `youmissedit.org` is actually set up: it is registered at GoDaddy,
+with DNS hosted there. Keep it there — you only need to point one subdomain at
+Pages, which leaves the registration, email, and other records untouched.
+
+1. Cloudflare dashboard → **Workers & Pages** → **team-grocery-list** →
+   **Custom domains** tab → **Set up a custom domain**.
+2. Enter `grocery.youmissedit.org`.
+3. On "Choose setup method", pick **My DNS provider** (not "Cloudflare DNS").
+4. Cloudflare shows a `CNAME` record to create:
+   - Type: `CNAME`
+   - Name: `grocery`
+   - Target: `team-grocery-list.pages.dev`
+5. In GoDaddy → your `youmissedit.org` DNS records → **Add** that CNAME
+   (Name `grocery`, Value `team-grocery-list.pages.dev`), save.
+6. Back on the Cloudflare custom-domain screen, Cloudflare detects the CNAME,
+   validates ownership, and issues the certificate. Wait for **Active** (a few
+   minutes; DNS can take longer to propagate), then visit
    <https://grocery.youmissedit.org>.
+
+Note: the domain must be registered as a custom domain on the Pages project
+(steps 1-3). A CNAME at GoDaddy on its own is not enough — without the Pages
+registration, Cloudflare will not issue a certificate for the hostname and the
+URL returns an SSL / "Error 1014" failure.
+
+**Case B — DNS managed on Cloudflare.**
+If the zone were on this Cloudflare account instead, pick **Cloudflare DNS** in
+step 3 and Cloudflare creates the `CNAME` for you automatically; no registrar
+step is needed.
 
 ---
 
