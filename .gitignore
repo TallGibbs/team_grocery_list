@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Wrangler / Cloudflare
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# Env / secrets
+.env
+.env.*
+
+# Build output
+dist/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
