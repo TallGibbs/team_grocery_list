@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Team Grocery List</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --card: #ffffff;
+      --border: #e2e4e8;
+      --text: #1c2024;
+      --muted: #6b7078;
+      --accent: #2f6f4f;
+      --accent-weak: #eef4f0;
+      --danger: #b23b3b;
+      --ok: #2f6f4f;
+      --err: #b23b3b;
+      --radius: 10px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #14161a;
+        --card: #1c1f24;
+        --border: #2c3037;
+        --text: #e7e9ec;
+        --muted: #9aa0a8;
+        --accent: #6fbf95;
+        --accent-weak: #20302a;
+        --danger: #e08585;
+        --ok: #6fbf95;
+        --err: #e08585;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .wrap {
+      max-width: 560px;
+      margin: 0 auto;
+      padding: 24px 16px calc(48px + env(safe-area-inset-bottom));
+    }
+
+    header {
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 0 0 4px;
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    form.add {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+      font-size: 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-weak);
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 15px;
+      cursor: pointer;
+      border-radius: 8px;
+      border: 1px solid transparent;
+    }
+
+    .btn-add {
+      padding: 10px 16px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .btn-add:active { opacity: 0.85; }
+
+    ul.list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    li.item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    li.item:last-child { border-bottom: none; }
+
+    .check {
+      width: 22px;
+      height: 22px;
+      flex: none;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    .label {
+      flex: 1;
+      font-size: 16px;
+      line-height: 1.35;
+      cursor: pointer;
+      word-break: break-word;
+    }
+    li.item.done .label {
+      text-decoration: line-through;
+      color: var(--muted);
+    }
+
+    .remove {
+      flex: none;
+      width: 30px;
+      height: 30px;
+      line-height: 1;
+      font-size: 20px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .remove:active { color: var(--danger); border-color: var(--danger); }
+
+    .empty {
+      padding: 20px 14px;
+      color: var(--muted);
+      font-size: 15px;
+      text-align: center;
+    }
+
+    footer {
+      margin-top: 14px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .btn-clear {
+      padding: 9px 14px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-clear:active { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Team Grocery List</h1>
+      <div id="status" class="status">Loading&hellip;</div>
+    </header>
+
+    <div class="card">
+      <form id="add-form" class="add" autocomplete="off">
+        <input id="add-input" type="text" placeholder="Add an item" aria-label="Add an item" />
+        <button type="submit" class="btn-add">Add</button>
+      </form>
+      <ul id="list" class="list"></ul>
+    </div>
+
+    <footer>
+      <button id="clear-checked" type="button" class="btn-clear">Clear checked items</button>
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var API = "/api/items";
+      var POLL_MS = 4000;
+
+      var SEED = [
+        "Sunscreen (spray)",
+        "Sunscreen (lotion)",
+        "Gatorade powder",
+        "Pretzels with peanut butter filling",
+        "Granola bars",
+        "Fruit snacks",
+        "Umbrellas (2, cheap)",
+        "Ice (to fill the cooler)"
+      ];
+
+      var items = [];
+      var initialized = false;   // first server response has been handled
+      var pendingWrites = 0;     // number of in-flight POSTs
+
+      var listEl = document.getElementById("list");
+      var statusEl = document.getElementById("status");
+      var inputEl = document.getElementById("add-input");
+      var formEl = document.getElementById("add-form");
+      var clearBtn = document.getElementById("clear-checked");
+
+      function uid() {
+        if (window.crypto && typeof crypto.randomUUID === "function") {
+          return crypto.randomUUID();
+        }
+        return "id-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      }
+
+      function normalize(arr) {
+        var out = [];
+        for (var i = 0; i < arr.length; i++) {
+          var it = arr[i];
+          if (!it || typeof it.text !== "string") continue;
+          out.push({
+            id: (it.id != null ? String(it.id) : uid()),
+            text: it.text,
+            done: !!it.done
+          });
+        }
+        return out;
+      }
+
+      function seedItems() {
+        return SEED.map(function (text) {
+          return { id: uid(), text: text, done: false };
+        });
+      }
+
+      function setStatus(kind) {
+        if (kind === "synced") {
+          statusEl.textContent = "Synced just now";
+          statusEl.className = "status ok";
+        } else if (kind === "error") {
+          statusEl.textContent = "Could not reach the server";
+          statusEl.className = "status err";
+        }
+      }
+
+      function render() {
+        listEl.innerHTML = "";
+
+        if (items.length === 0) {
+          var empty = document.createElement("li");
+          empty.className = "empty";
+          empty.textContent = "Nothing on the list yet.";
+          listEl.appendChild(empty);
+          return;
+        }
+
+        for (var i = 0; i < items.length; i++) {
+          (function (item) {
+            var li = document.createElement("li");
+            li.className = "item" + (item.done ? " done" : "");
+
+            var cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.className = "check";
+            cb.checked = !!item.done;
+            cb.setAttribute("aria-label", "Mark " + item.text);
+            cb.addEventListener("change", function () { toggle(item.id); });
+
+            var label = document.createElement("span");
+            label.className = "label";
+            label.textContent = item.text;
+            label.addEventListener("click", function () { toggle(item.id); });
+
+            var rm = document.createElement("button");
+            rm.type = "button";
+            rm.className = "remove";
+            rm.textContent = "×";
+            rm.setAttribute("aria-label", "Remove " + item.text);
+            rm.addEventListener("click", function () { remove(item.id); });
+
+            li.appendChild(cb);
+            li.appendChild(label);
+            li.appendChild(rm);
+            listEl.appendChild(li);
+          })(items[i]);
+        }
+      }
+
+      function save() {
+        pendingWrites++;
+        return fetch(API, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(items)
+        }).then(function (res) {
+          if (!res.ok) throw new Error("bad status " + res.status);
+          setStatus("synced");
+        }).catch(function () {
+          setStatus("error");
+        }).then(function () {
+          pendingWrites--;
+        });
+      }
+
+      function add(text) {
+        text = (text || "").trim();
+        if (!text) return;
+        items.push({ id: uid(), text: text, done: false });
+        render();
+        save();
+      }
+
+      function toggle(id) {
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].id === id) {
+            items[i].done = !items[i].done;
+            break;
+          }
+        }
+        render();
+        save();
+      }
+
+      function remove(id) {
+        items = items.filter(function (it) { return it.id !== id; });
+        render();
+        save();
+      }
+
+      function clearChecked() {
+        items = items.filter(function (it) { return !it.done; });
+        render();
+        save();
+      }
+
+      function refresh() {
+        return fetch(API, { cache: "no-store" }).then(function (res) {
+          if (!res.ok) throw new Error("bad status " + res.status);
+          return res.json();
+        }).then(function (data) {
+          var arr = Array.isArray(data) ? normalize(data) : [];
+
+          // Seed only the very first time the server reports an empty list.
+          if (!initialized) {
+            initialized = true;
+            if (arr.length === 0) {
+              items = seedItems();
+              render();
+              return save();
+            }
+          }
+
+          // Don't overwrite optimistic local changes while a write is in flight.
+          if (pendingWrites === 0) {
+            items = arr;
+            render();
+            setStatus("synced");
+          }
+        }).catch(function () {
+          initialized = true; // don't seed on top of a transient failure
+          setStatus("error");
+        });
+      }
+
+      formEl.addEventListener("submit", function (e) {
+        e.preventDefault();
+        add(inputEl.value);
+        inputEl.value = "";
+        inputEl.focus();
+      });
+
+      clearBtn.addEventListener("click", clearChecked);
+
+      render();
+      refresh();
+      setInterval(refresh, POLL_MS);
+    })();
+  </script>
+</body>
+</html>
