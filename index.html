@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
-  <title>Team Grocery List</title>
+  <title>Relay Team Grocery List</title>
   <style>
     :root {
       --bg: #f6f7f8;
@@ -55,11 +55,25 @@
       margin-bottom: 16px;
     }
 
+    .title-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
     h1 {
       font-size: 20px;
       font-weight: 600;
       letter-spacing: -0.01em;
       margin: 0 0 4px;
+    }
+
+    .tagline {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0 0 6px;
+      line-height: 1.4;
     }
 
     .status {
@@ -117,6 +131,17 @@
     }
     .btn-add:active { opacity: 0.85; }
 
+    .btn-share {
+      flex: none;
+      padding: 7px 12px;
+      font-size: 13px;
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      white-space: nowrap;
+    }
+    .btn-share:active { background: var(--accent-weak); }
+
     ul.list {
       list-style: none;
       margin: 0;
@@ -165,16 +190,18 @@
     .remove:active { color: var(--danger); border-color: var(--danger); }
 
     .empty {
-      padding: 20px 14px;
+      padding: 22px 16px;
       color: var(--muted);
       font-size: 15px;
+      line-height: 1.5;
       text-align: center;
     }
 
     footer {
       margin-top: 14px;
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      gap: 8px;
     }
 
     .btn-clear {
@@ -184,24 +211,37 @@
       border: 1px solid var(--border);
     }
     .btn-clear:active { color: var(--text); }
+
+    .btn-reset {
+      padding: 9px 14px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-reset:active { color: var(--danger); border-color: var(--danger); }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
-      <h1>Team Grocery List</h1>
+      <div class="title-row">
+        <h1>Relay Team Grocery List</h1>
+        <button id="share" type="button" class="btn-share">Copy link</button>
+      </div>
+      <p class="tagline">Shared list for the relay. Anyone with this link can add items and check them off &mdash; no sign-in.</p>
       <div id="status" class="status">Loading&hellip;</div>
     </header>
 
     <div class="card">
       <form id="add-form" class="add" autocomplete="off">
-        <input id="add-input" type="text" placeholder="Add an item" aria-label="Add an item" />
+        <input id="add-input" type="text" placeholder="Add an item" aria-label="Add an item" maxlength="200" />
         <button type="submit" class="btn-add">Add</button>
       </form>
       <ul id="list" class="list"></ul>
     </div>
 
     <footer>
+      <button id="clear-all" type="button" class="btn-reset">Start a new list</button>
       <button id="clear-checked" type="button" class="btn-clear">Clear checked items</button>
     </footer>
   </div>
@@ -212,27 +252,19 @@
 
       var API = "/api/items";
       var POLL_MS = 4000;
-
-      var SEED = [
-        "Sunscreen (spray)",
-        "Sunscreen (lotion)",
-        "Gatorade powder",
-        "Pretzels with peanut butter filling",
-        "Granola bars",
-        "Fruit snacks",
-        "Umbrellas (2, cheap)",
-        "Ice (to fill the cooler)"
-      ];
+      var FLASH_MS = 2500;
 
       var items = [];
-      var initialized = false;   // first server response has been handled
       var pendingWrites = 0;     // number of in-flight POSTs
+      var flashUntil = 0;        // suppress sync status until this timestamp
 
       var listEl = document.getElementById("list");
       var statusEl = document.getElementById("status");
       var inputEl = document.getElementById("add-input");
       var formEl = document.getElementById("add-form");
       var clearBtn = document.getElementById("clear-checked");
+      var resetBtn = document.getElementById("clear-all");
+      var shareBtn = document.getElementById("share");
 
       function uid() {
         if (window.crypto && typeof crypto.randomUUID === "function") {
@@ -255,13 +287,8 @@
         return out;
       }
 
-      function seedItems() {
-        return SEED.map(function (text) {
-          return { id: uid(), text: text, done: false };
-        });
-      }
-
       function setStatus(kind) {
+        if (Date.now() < flashUntil) return; // a flash message owns the line
         if (kind === "synced") {
           statusEl.textContent = "Synced just now";
           statusEl.className = "status ok";
@@ -271,13 +298,20 @@
         }
       }
 
+      // Show a short-lived message that the 4s poll won't immediately overwrite.
+      function flash(text, isError) {
+        flashUntil = Date.now() + FLASH_MS;
+        statusEl.textContent = text;
+        statusEl.className = "status " + (isError ? "err" : "ok");
+      }
+
       function render() {
         listEl.innerHTML = "";
 
         if (items.length === 0) {
           var empty = document.createElement("li");
           empty.className = "empty";
-          empty.textContent = "Nothing on the list yet.";
+          empty.textContent = "Nothing on the list yet. Add the first item, or send the link to the team.";
           listEl.appendChild(empty);
           return;
         }
@@ -361,22 +395,58 @@
         save();
       }
 
+      // Wipe the shared list back to empty, e.g. when starting a new trip.
+      function clearAll() {
+        if (items.length === 0) return;
+        var ok = window.confirm(
+          "Remove all " + items.length + " items for everyone? This cannot be undone."
+        );
+        if (!ok) return;
+        items = [];
+        render();
+        save();
+      }
+
+      function copyLink() {
+        var url = window.location.href;
+
+        function fallback() {
+          var ta = document.createElement("textarea");
+          ta.value = url;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          var copied = false;
+          try {
+            copied = document.execCommand("copy");
+          } catch (err) {
+            copied = false;
+          }
+          document.body.removeChild(ta);
+          if (copied) {
+            flash("Link copied");
+          } else {
+            flash("Copy the link from the address bar", true);
+          }
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(function () {
+            flash("Link copied");
+          }).catch(fallback);
+        } else {
+          fallback();
+        }
+      }
+
       function refresh() {
         return fetch(API, { cache: "no-store" }).then(function (res) {
           if (!res.ok) throw new Error("bad status " + res.status);
           return res.json();
         }).then(function (data) {
           var arr = Array.isArray(data) ? normalize(data) : [];
-
-          // Seed only the very first time the server reports an empty list.
-          if (!initialized) {
-            initialized = true;
-            if (arr.length === 0) {
-              items = seedItems();
-              render();
-              return save();
-            }
-          }
 
           // Don't overwrite optimistic local changes while a write is in flight.
           if (pendingWrites === 0) {
@@ -385,7 +455,6 @@
             setStatus("synced");
           }
         }).catch(function () {
-          initialized = true; // don't seed on top of a transient failure
           setStatus("error");
         });
       }
@@ -398,6 +467,8 @@
       });
 
       clearBtn.addEventListener("click", clearChecked);
+      resetBtn.addEventListener("click", clearAll);
+      shareBtn.addEventListener("click", copyLink);
 
       render();
       refresh();
