@@ -14,6 +14,14 @@ The list starts empty, so the team fills it in from scratch each trip.
 There is no authentication by design. Treat the URL as the only "secret" — keep
 it within your group.
 
+## Where it lives
+
+- **Live site:** <https://grocery.youmissedit.org>
+- **Also reachable at:** <https://team-grocery-list.pages.dev>
+
+It is hosted on Cloudflare Pages as the project `team-grocery-list`, which
+deploys automatically on every push to `main`.
+
 ## Using it
 
 - **Copy link** (top right) copies the page URL to send to the team.
